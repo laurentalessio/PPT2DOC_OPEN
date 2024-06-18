@@ -12,6 +12,9 @@ from docx.oxml.ns import qn
 from docx.shared import Inches
 
 
+if 'streamlit' not in os.environ:
+    import pyautogui
+
 
 # Add a text input for the OpenAI API key
 openai_api_key = st.text_input("Enter your OpenAI API key:", type="password")
@@ -263,7 +266,7 @@ st.title("PowerPoint to Report Converter")
 
 uploaded_file = st.file_uploader("Upload a PowerPoint file", type=["pptx"])
 presentation_context = st.text_input("Context for the entire presentation")
-openai_api_key = st.text_input("Enter your OpenAI key")
+
 uploaded_template = st.file_uploader("Upload a Word template file (optional)", type=["docx"])
 uploaded_report_example = st.file_uploader("Upload an example report (optional)", type=["txt", "docx"])
 
