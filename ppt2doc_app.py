@@ -1,4 +1,3 @@
-
 import os
 import shutil
 import tempfile
@@ -12,8 +11,6 @@ from docx import Document
 from docx.oxml import OxmlElement
 from docx.oxml.ns import qn
 from docx.shared import Inches
-import comtypes.client
-import pythoncom
 
 # Add a text input for the OpenAI API key
 openai_api_key = st.text_input("Enter your OpenAI API key:", type="password")
@@ -23,31 +20,23 @@ if openai_api_key:
     openai.api_key = openai_api_key
 
     # Ensure poppler is in the PATH
-    os.environ["PATH"] += os.pathsep + r'C:\Users\User\Dropbox\PC\Documents\work\Peripeteia\poppler-24.02.0\Library\bin'  # Update with your actual path to poppler's bin directory
+    os.environ["PATH"] += os.pathsep + r'C:\Users\User\Dropbox\PC\Documents\work\Peripeteia\poppler-24.02.0\Library\bin'
 
     # Function to ensure the existence of an image directory and clear it if it exists
     def ensure_image_directory():
         if os.path.exists("extracted_images"):
-            shutil.rmtree("extracted_images")
+            try:
+                shutil.rmtree("extracted_images")
+            except PermissionError:
+                pass
         os.makedirs("extracted_images", exist_ok=True)
 
     # Function to sanitize text by removing non-printable characters
     def sanitize_text(text):
         return ''.join(c for c in text if c.isprintable())
 
-    # Function to convert PowerPoint to PDF
-    def ppt_to_pdf(input_file, output_file):
-        pythoncom.CoInitialize()
-        powerpoint = comtypes.client.CreateObject("PowerPoint.Application")
-        powerpoint.Visible = 1
-        presentation = powerpoint.Presentations.Open(input_file)
-        presentation.SaveAs(output_file, 32)  # 32 is the format type for PDF
-        presentation.Close()
-        powerpoint.Quit()
-        pythoncom.CoUninitialize()
-
     # Function to extract and crop images from PDF
-    def extract_images_from_pdf(pdf_path, crop_box):
+    def extract_images_from_pdf(pdf_path, crop_box=None):
         images = convert_from_path(pdf_path)
         image_paths = []
         for i, image in enumerate(images):
@@ -85,7 +74,7 @@ if openai_api_key:
         prompt = (
             f"Using the context of '{presentation_context}', write a technical description that summarizes the content of the following slides. "
             f"The description should be clear, concise, and fit for inclusion in a professional report by an engineering consultancy. "
-            f"It should be written in way that the pargraph text refers to the figures to illustrate the main technical points. "
+            f"It should be written in way that the paragraph text refers to the figures to illustrate the main technical points. "
             f"Each slide contains technical data, and your task is to highlight key points and any notable differences or observations.\n\n"
             f"Titles: {combined_titles}\n\nText: {combined_text}\n\n"
             f"Generate the description based on this content, ensuring it is suitable for a technical audience."
@@ -172,10 +161,19 @@ if openai_api_key:
 
         return doc
 
+    # Initialize session state for slides and slide_index if not already initialized
+    if 'slides' not in st.session_state:
+        st.session_state.slides = []
+
+    if 'slide_index' not in st.session_state:
+        st.session_state.slide_index = 0
+
     # Streamlit app
     st.title("PowerPoint to Report Converter")
 
-    uploaded_file = st.file_uploader("Upload a PowerPoint file", type=["pptx"])
+    uploaded_pptx = st.file_uploader("Upload a PowerPoint file", type=["pptx"])
+    uploaded_pdf = st.file_uploader("Upload the corresponding PDF file", type=["pdf"])  # Moved this line here
+
     presentation_context = st.text_input("Context for the entire presentation")
 
     uploaded_template = st.file_uploader("Upload a Word template file (optional)", type=["docx"])
@@ -192,10 +190,14 @@ if openai_api_key:
             doc = Document(tmp_report_example_path)
             example_report = "\n".join([para.text for para in doc.paragraphs])
 
-    if uploaded_file:
+    if uploaded_pptx and uploaded_pdf:  # Ensure both files are uploaded
         with tempfile.NamedTemporaryFile(delete=False, suffix=".pptx") as tmp:
-            tmp.write(uploaded_file.getbuffer())
-            tmp_path = tmp.name
+            tmp.write(uploaded_pptx.getbuffer())
+            tmp_pptx_path = tmp.name
+
+        with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as tmp_pdf:
+            tmp_pdf.write(uploaded_pdf.getbuffer())
+            pdf_path = tmp_pdf.name
 
         if uploaded_template:
             with tempfile.NamedTemporaryFile(delete=False, suffix=".docx") as tmp_template:
@@ -204,29 +206,26 @@ if openai_api_key:
         else:
             template_path = None
 
-        if 'slides' not in st.session_state:
+        if 'slides' not in st.session_state or not st.session_state.slides:
             ensure_image_directory()
-            
-            # Extract text
-            slides_text = extract_text_from_pptx(tmp_path)
-            
-            # Convert PowerPoint to PDF and then to images
-            pdf_path = tmp_path.replace('.pptx', '.pdf')
-            ppt_to_pdf(tmp_path, pdf_path)
-            
+
+            # Extract text from PPTX
+            slides_text = extract_text_from_pptx(tmp_pptx_path)
+
             # Define the crop box (left, upper, right, lower) based on your needs
-            crop_box = (0,250, 2500, 1430)  # Adjust these values according to your needs
+            crop_box = (0, 250, 2500, 1430)  # Adjust these values according to your needs
             slides_images = extract_images_from_pdf(pdf_path, crop_box)
-            
+
             slides = []
             for i, slide in enumerate(slides_text):
                 slide["screenshot"] = slides_images[i]
                 slides.append(slide)
-            
+
             st.session_state.slides = slides
             st.session_state.slide_index = 0
 
-        slides = st.session_state.slides
+    slides = st.session_state.slides
+    if len(slides) > 0:
         st.write(f"Number of extracted slides: {len(slides)}")
 
         # Sidebar for slide navigation and section assignment
@@ -277,7 +276,7 @@ if openai_api_key:
             with open("report.docx", "rb") as f:
                 st.download_button("Download Report", data=f, file_name="report.docx")
     else:
-        if st.button("Clear"):
-            st.session_state.clear()
+        st.write("No slides extracted. Please upload a PowerPoint file and the corresponding PDF file.")
 else:
-    st.warning("Please enter your OpenAI API key.")
+    if st.button("Clear"):
+        st.session_state.clear()
