@@ -215,7 +215,7 @@ if openai_api_key:
             ppt_to_pdf(tmp_path, pdf_path)
             
             # Define the crop box (left, upper, right, lower) based on your needs
-            crop_box = (0,225, 1930, 870)  # Adjust these values according to your needs
+            crop_box = (0,250, 2500, 1430)  # Adjust these values according to your needs
             slides_images = extract_images_from_pdf(pdf_path, crop_box)
             
             slides = []
