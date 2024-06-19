@@ -1,3 +1,4 @@
+
 import os
 import shutil
 import tempfile
@@ -45,11 +46,13 @@ if openai_api_key:
         powerpoint.Quit()
         pythoncom.CoUninitialize()
 
-    # Function to extract images from PDF
-    def extract_images_from_pdf(pdf_path):
+    # Function to extract and crop images from PDF
+    def extract_images_from_pdf(pdf_path, crop_box):
         images = convert_from_path(pdf_path)
         image_paths = []
         for i, image in enumerate(images):
+            if crop_box:
+                image = image.crop(crop_box)
             image_path = f"extracted_images/slide_{i + 1}.png"
             image.save(image_path, 'PNG')
             image_paths.append(image_path)
@@ -210,7 +213,10 @@ if openai_api_key:
             # Convert PowerPoint to PDF and then to images
             pdf_path = tmp_path.replace('.pptx', '.pdf')
             ppt_to_pdf(tmp_path, pdf_path)
-            slides_images = extract_images_from_pdf(pdf_path)
+            
+            # Define the crop box (left, upper, right, lower) based on your needs
+            crop_box = (0,225, 1930, 870)  # Adjust these values according to your needs
+            slides_images = extract_images_from_pdf(pdf_path, crop_box)
             
             slides = []
             for i, slide in enumerate(slides_text):
